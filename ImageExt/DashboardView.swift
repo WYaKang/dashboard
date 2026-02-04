@@ -6,9 +6,12 @@
 //
 
 import SwiftUI
+import Charts
 
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
+    @State private var selectedRange: DateRange = .last7
+    @State private var activeFilters: Set<FilterType> = [.all]
 
     var body: some View {
         ZStack {
@@ -17,6 +20,7 @@ struct DashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
+                    filterRow
                     kpiGrid
                     trendsSection
                     breakdownSection
@@ -44,17 +48,39 @@ struct DashboardView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 6) {
-                    Text("Last 7 days")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.dashboardPrimary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.dashboardPrimary.opacity(0.12))
-                        .clipShape(Capsule())
+                    dateRangeControl
 
                     Text("Updated \(formattedDate(viewModel.data.lastUpdated))")
                         .font(.system(size: 11))
                         .foregroundStyle(Color.dashboardMuted)
+                }
+            }
+        }
+    }
+
+    private var dateRangeControl: some View {
+        Picker("Date Range", selection: $selectedRange) {
+            ForEach(DateRange.allCases) { range in
+                Text(range.label).tag(range)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 220)
+        .onChange(of: selectedRange) { _ in
+            // TODO: Re-fetch data for selected range
+        }
+    }
+
+    private var filterRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(FilterType.allCases) { filter in
+                    FilterChip(
+                        title: filter.label,
+                        isActive: activeFilters.contains(filter)
+                    ) {
+                        toggleFilter(filter)
+                    }
                 }
             }
         }
@@ -108,6 +134,73 @@ struct DashboardView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func toggleFilter(_ filter: FilterType) {
+        if filter == .all {
+            activeFilters = [.all]
+            return
+        }
+
+        if activeFilters.contains(filter) {
+            activeFilters.remove(filter)
+        } else {
+            activeFilters.insert(filter)
+        }
+
+        if activeFilters.isEmpty {
+            activeFilters = [.all]
+        } else {
+            activeFilters.remove(.all)
+        }
+        // TODO: Re-fetch data for active filters
+    }
+}
+
+private enum DateRange: String, CaseIterable, Identifiable {
+    case last7
+    case last30
+    case last90
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .last7:
+            return "7d"
+        case .last30:
+            return "30d"
+        case .last90:
+            return "90d"
+        }
+    }
+}
+
+private enum FilterType: String, CaseIterable, Identifiable {
+    case all
+    case ios
+    case android
+    case web
+    case us
+    case eu
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all:
+            return "All"
+        case .ios:
+            return "iOS"
+        case .android:
+            return "Android"
+        case .web:
+            return "Web"
+        case .us:
+            return "US"
+        case .eu:
+            return "EU"
+        }
     }
 }
 
@@ -168,7 +261,7 @@ private struct TrendCard: View {
             }
 
             MiniTrendChart(points: series.points)
-                .frame(height: 80)
+                .frame(height: 90)
 
             HStack {
                 Text(series.valueLabel)
@@ -253,40 +346,61 @@ private struct MiniTrendChart: View {
     var points: [Double]
 
     var body: some View {
-        GeometryReader { proxy in
-            let height = proxy.size.height
-            let width = proxy.size.width
-            let maxPoint = points.max() ?? 1
-            let minPoint = points.min() ?? 0
-            let range = max(maxPoint - minPoint, 1)
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.dashboardPrimary.opacity(0.06))
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.dashboardPrimary.opacity(0.06))
+            Chart {
+                ForEach(Array(points.enumerated()), id: \.offset) { index, value in
+                    LineMark(
+                        x: .value("Index", index),
+                        y: .value("Value", value)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(Color.dashboardPrimary)
 
-                Path { path in
-                    guard !points.isEmpty else { return }
-
-                    if points.count == 1 {
-                        let y = height - (height * CGFloat((points[0] - minPoint) / range))
-                        path.move(to: CGPoint(x: 0, y: y))
-                        path.addLine(to: CGPoint(x: width, y: y))
-                        return
-                    }
-
-                    for index in points.indices {
-                        let x = width * CGFloat(index) / CGFloat(points.count - 1)
-                        let y = height - (height * CGFloat((points[index] - minPoint) / range))
-                        if index == 0 {
-                            path.move(to: CGPoint(x: x, y: y))
-                        } else {
-                            path.addLine(to: CGPoint(x: x, y: y))
-                        }
-                    }
+                    AreaMark(
+                        x: .value("Index", index),
+                        y: .value("Value", value)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.dashboardPrimary.opacity(0.25), Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                 }
-                .stroke(Color.dashboardPrimary, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
             }
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .chartLegend(.hidden)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 8)
         }
+    }
+}
+
+private struct FilterChip: View {
+    var title: String
+    var isActive: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isActive ? Color.white : Color.dashboardMuted)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(isActive ? Color.dashboardPrimary : Color.white)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.black.opacity(0.08), lineWidth: isActive ? 0 : 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
