@@ -81,9 +81,9 @@ class UsageExamples {
         }
         
         // 3. Effects & Styling
-        let _ = image.blurred(radius: 10)?
-            .withRoundedCorners(radius: 15, corners: [.topLeft, .bottomRight]) // Custom corners
-            .resize(to: CGSize(width: 300, height: 200), contentMode: .scaleAspectFill) // Smart resize
+        if let rounded = image.blurred(radius: 10)?.withRoundedCorners(radius: 15, corners: [.topLeft, .bottomRight]) {
+            let _ = rounded.resize(to: CGSize(width: 300, height: 200), contentMode: .scaleAspectFill)
+        }
             
         // 4. Compress for upload (Binary Search)
         if let data = image.compress(toMaxBytes: 1024 * 500) { // 500KB

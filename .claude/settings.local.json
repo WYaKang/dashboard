@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx skills find --help:*)",
+      "Bash(npx skills --help:*)",
+      "Bash(npx skills find:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcrun simctl:*)"
+    ]
+  }
+}
